@@ -217,6 +217,7 @@ def get_available_controllers():
 def run_rollout(data_path, controller_type, model_path, debug=False):
   tinyphysicsmodel = TinyPhysicsModel(model_path, debug=debug)
   controller = importlib.import_module(f'controllers.{controller_type}').Controller()
+  controller.dt = DEL_T
   sim = TinyPhysicsSimulator(tinyphysicsmodel, str(data_path), controller=controller, debug=debug)
   return sim.rollout(), sim.target_lataccel_history, sim.current_lataccel_history
 
