@@ -214,7 +214,7 @@ def get_available_controllers():
   return [f.stem for f in Path('controllers').iterdir() if f.is_file() and f.suffix == '.py' and f.stem != '__init__']
 
 
-def run_rollout(data_path, controller_type, model_path, debug=False):
+def run_rollout(data_path, controller_type, model_path, debug=False, KP=0.0, KI=0.0, KD=0.0):
   tinyphysicsmodel = TinyPhysicsModel(model_path, debug=debug)
   controller = importlib.import_module(f'controllers.{controller_type}').Controller()
   controller.dt = DEL_T
@@ -249,9 +249,24 @@ if __name__ == "__main__":
 
   data_path = Path(args.data_path)
   if data_path.is_file():
-    cost, _, _ = run_rollout(data_path, args.controller, args.model_path, debug=args.debug)
-    print(f"\nAverage lataccel_cost: {cost['lataccel_cost']:>6.4}, average jerk_cost: {cost['jerk_cost']:>6.4}, average total_cost: {cost['total_cost']:>6.4}")
+    grid = {
+          'Kp': [0.10, 0.15, 0.195, 0.24],
+          'Ki': [0.0, 0.05, 0.10, 0.15],
+          'Kd': [0.00, 0.01, -0.02, -0.04,-0.053],
+    }
+    results = []
+    for kp in grid['Kp']:
+      for ki in grid['Ki']:
+        for kd in grid['Kd']:
+          cost, _, _ = run_rollout(data_path, args.controller, args.model_path, debug=False, KP=kp, KI=ki, KD=kd)
+          results.append((kp, ki, kd, cost['lataccel_cost'], cost['jerk_cost'], cost['total_cost']))
+          print(
+            f"Kp={kp:.3f} Ki={ki:.3f} Kd={kd:.3f}  ->  L={cost['lataccel_cost']:.2f}  J={cost['jerk_cost']:.2f}  T={cost['total_cost']:.2f}")
+    results.sort(key=lambda r: r[-1])
+    best = results[0]
+    print("BEST: ", best)
   elif data_path.is_dir():
+    print("this is true")
     run_rollout_partial = partial(run_rollout, controller_type=args.controller, model_path=args.model_path, debug=False)
     files = sorted(data_path.iterdir())[:args.num_segs]
     results = process_map(run_rollout_partial, files, max_workers=16, chunksize=10)
