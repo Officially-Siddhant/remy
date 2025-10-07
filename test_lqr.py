@@ -214,18 +214,23 @@ def get_available_controllers():
   return [f.stem for f in Path('controllers').iterdir() if f.is_file() and f.suffix == '.py' and f.stem != '__init__']
 
 
-def run_rollout(data_path, controller_type, model_path, debug=False,Q_A=0.0, Q_J=0.0, Q_I=0.0, R=0.0,TAU=0.4):
-  tinyphysicsmodel = TinyPhysicsModel(model_path, debug=debug)
-  controller_cls = importlib.import_module(f'controllers.{controller_type}').Controller
-  controller = controller_cls(q_a=Q_A, q_j=Q_J, q_i=Q_I, r=R, dt=DEL_T,tau = TAU)
-  controller.dt = DEL_T
-  controller.q_a = Q_A
-  controller.q_j = Q_J
-  controller.q_i = Q_I
-  controller.r = R
-  controller.tau = TAU
-  sim = TinyPhysicsSimulator(tinyphysicsmodel, str(data_path), controller=controller, debug=debug)
-  return sim.rollout(), sim.target_lataccel_history, sim.current_lataccel_history
+def run_rollout(data_path, controller_type, model_path,
+                debug=False, QE=10.0, QJ=10.0, QI=50.0,
+                R=0.1, TAU=0.4, DT=1.0,LAMB = 0.1):
+
+    tinyphysicsmodel = TinyPhysicsModel(model_path, debug=debug)
+    controller_cls = importlib.import_module(f'controllers.{controller_type}').Controller
+    controller = controller_cls(qe=QE, qj=QJ, r=R,tau=TAU,lamb = LAMB, dt= DT)
+
+    controller.qe = QE
+    controller.qj = QJ
+    controller.r = R
+    controller.dt = DT
+    controller.tau = TAU
+    controller.lamb = LAMB
+
+    sim = TinyPhysicsSimulator(tinyphysicsmodel, str(data_path), controller=controller, debug=debug)
+    return sim.rollout(), sim.target_lataccel_history, sim.current_lataccel_history
 
 
 def download_dataset():
@@ -254,45 +259,48 @@ if __name__ == "__main__":
 
   data_path = Path(args.data_path)
   if data_path.is_file():
-    grid_lqi = {
-      "q_a": [10.0, 11.5, 13.0],  # accel tracking
-      "q_j": [15.0, 18.0, 20.0, 22.0, 25.0],  # jerk penalty
-      "q_i": [0.4, 0.5, 0.55, 0.6, 0.7],  # integral error
-      "r": [0.7, 0.8, 0.9, 1.0]  # input weight
-    }
+      grid_pid = {
+            'qe': [0.22],
+            'qj': [0.07, 0.08, 0.09, 0.10],
+            'r':  [0.070],
+            'tau': [12.6],
+            'lamb': [6.0, 7.0, 8.0, 9.0, 10.0,12,13,14,15,16,17,18,20],
+      }
 
-    results = []
-    for q_a in grid_lqi['q_a']:
-        for q_j in grid_lqi['q_j']:
-            for q_i in grid_lqi['q_i']:
-                for r in grid_lqi['r']:
-                    for tau in np.arange(0.3,0.4):  # 0.40, 0.41, …, 0.50
-                        cost, _, _ = run_rollout(
-                            data_path, args.controller, args.model_path,
-                            debug=False,
-                            Q_A=q_a, Q_J=q_j, Q_I=q_i, R=r,
-                            TAU=tau
-                        )
-                        row = (q_a, q_j, q_i, r, tau,
-                               cost['lataccel_cost'],
-                               cost['jerk_cost'],
-                               cost['total_cost'])
-                        results.append(row)
+      results = []
 
-                        print(f"q_a={q_a}, q_j={q_j}, "
-                              f"q_i={q_i}, r={r:.2f}, τ={tau:.2f}  "
-                              f"-> L={cost['lataccel_cost']:.2f}, "
-                              f"J={cost['jerk_cost']:.2f}, "
-                              f"T={cost['total_cost']:.2f}")
+      for qe in grid_pid['qe']:
+          for qj in grid_pid['qj']:
+              for r in grid_pid['r']:
+                  for tau in grid_pid['tau']:
+                      for lamb in grid_pid['lamb']:
+                              cost, _, _ = run_rollout(
+                                  data_path, args.controller, args.model_path,
+                                  debug=False,
+                                  QE=qe,
+                                  QJ=qj, R=r, TAU=tau,
+                                  LAMB=lamb, DT=DEL_T,
+                              )
+                              row = (qe, qj, r, tau, lamb,
+                                     cost['lataccel_cost'],
+                                     cost['jerk_cost'],
+                                     cost['total_cost'])
+                              results.append(row)
 
-    # Find best by total cost
-    results.sort(key=lambda x: x[-1])
-    best = results[0]
+                              print(f"qe={qe:.2f}, qj={qj:.2f}, r={r:.2f}, "
+                                    f"tau={tau:.2f}, lamb={lamb:.2f}  "
+                                    f"-> L={cost['lataccel_cost']:.2f}, "
+                                    f"J={cost['jerk_cost']:.2f}, "
+                                    f"T={cost['total_cost']:.2f}")
 
-    print("\nBEST CONFIG:")
-    print(f"q_a={best[1]}, q_j={best[2]}, q_i={best[3]}, "
-          f"r={best[4]:.2f}, τ={best[5]:.2f}  "
-          f"-> L={best[6]:.2f}, J={best[7]:.2f}, T={best[8]:.2f}")
+                      # Find best by total cost
+      results.sort(key=lambda x: x[-1])
+      best = results[0]
+
+      print("\nBEST CONFIG:")
+      print(f"qe={best[0]:.2f}, qj={best[1]:.2f}, r={best[2]:.2f}, "
+            f"tau={best[3]:.2f}, lamb={best[4]:.2f}  "
+            f"-> L={best[5]:.2f}, J={best[6]:.2f}, T={best[7]:.2f}")
   elif data_path.is_dir():
     print("this is true")
     run_rollout_partial = partial(run_rollout, controller_type=args.controller, model_path=args.model_path, debug=False)

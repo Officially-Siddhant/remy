@@ -36,15 +36,15 @@ class Controller(BaseController):
 
     # self.dt = getattr(self, "dt", 0.1)
     self.dt = 1.0
-    self.steer_factor = 12.5
-    self.minimum_v = 20.0
+    self.steer_factor = 12.6
+    self.minimum_v = 30.0
     self.N = 5
 
   def update(self, target_lataccel, current_lataccel, state, future_plan):
     self.step = getattr(self, "step", 0) + 1
     fade = min(self.step / 100.0, 1.0)
 
-    # gentlest on I, moderate on P/D
+    # Gains post fade-in
     Kp_eff = self.p * fade
     Ki_eff = self.i * (fade ** 3)
     Kd_eff = self.d * fade
@@ -54,10 +54,14 @@ class Controller(BaseController):
     rolls = [getattr(state, "roll_lataccel", 0.0)] + (getattr(future_plan, "roll_lataccel", []) or [])
     u_ff = -self.k_roll * np.average(rolls[:self.roll_N])
 
-    future = future_plan.lataccel[:max(0, self.N - 1)]
-    targets = [float(target_lataccel)] + [float(x) for x in future]
-    weights = np.array([4, 3, 2, 2, 2, 1][:len(targets)], dtype=float)
+    L = 0  # lag
+    H = min(self.N - 1 + L, len(future_plan.lataccel))
+    future = [float(x) for x in future_plan.lataccel[:H]]
+
+    targets = [float(target_lataccel)] + future
+    weights = np.arange(1, len(targets) + 1, dtype=float)
     weights /= weights.sum()
+
     target_smooth = float(np.dot(weights, targets))
 
     # Proportional Error
@@ -76,7 +80,7 @@ class Controller(BaseController):
     self.prev_error_d = error_d
     self.derivative = self.alpha * self.derivative + (1 - self.alpha) * error_diff
 
-
+    # using velocity to determine how harsh our steer input is
     steer_lataccel_target = (target_smooth - state.roll_lataccel)
     u_steer = steer_lataccel_target * (self.steer_factor / max(self.minimum_v, state.v_ego))
     u_steer = u_steer / (1.0 + np.abs(u_steer))
@@ -85,5 +89,4 @@ class Controller(BaseController):
 
 
     u_tot = u + u_steer + u_ff
-
     return u_tot
