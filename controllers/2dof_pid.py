@@ -3,11 +3,8 @@ import numpy as np
 
 
 class Controller(BaseController):
-  """
-  A simple PID controller
-  """
   def __init__(self,):
-  # def __init__(self, alpha, p, i, d, b, c,dt):
+  # def __init__(self, alpha, p, i, d, b, c,dt): # for testing
 
     self.p = 0.20
     self.i = 0.05
@@ -17,15 +14,6 @@ class Controller(BaseController):
     self.c = 0.10 # lower c values - higher the derivative operates on y (measurement)
     self.alpha = 0.98
 
-    '''
-    self.p = p
-    self.i = i
-    self.d = d
-
-    self.b = b # higher b = higher reference signal
-    self.c = c # lower c values - higher the derivative operates on y (measurement)
-    self.alpha = alpha
-    '''
 
     self.error_integral = 0
     self.derivative = 0.0
@@ -34,7 +22,7 @@ class Controller(BaseController):
     self.k_roll = 0.20
     self.roll_N = 5
 
-    # self.dt = getattr(self, "dt", 0.1)
+    # self.dt = getattr(self, "dt", 0.1) #sim's handling this
     self.dt = 1.0
     self.steer_factor = 12.6
     self.minimum_v = 30.0
@@ -80,7 +68,7 @@ class Controller(BaseController):
     self.prev_error_d = error_d
     self.derivative = self.alpha * self.derivative + (1 - self.alpha) * error_diff
 
-    # using velocity to determine how harsh our steer input is
+    # using velocity to determine how harsh my steer input is
     steer_lataccel_target = (target_smooth - state.roll_lataccel)
     u_steer = steer_lataccel_target * (self.steer_factor / max(self.minimum_v, state.v_ego))
     u_steer = u_steer / (1.0 + np.abs(u_steer))
